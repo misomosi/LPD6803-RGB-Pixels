@@ -9,9 +9,11 @@ class LPD6803 {
   uint8_t cpumax;
 
  public:
-  LPD6803(uint16_t n, uint8_t dpin, uint8_t cpin);
+  LPD6803(uint16_t n);
   void begin();
+  void end();
   void show();
+  void flush();
   void doSwapBuffersAsap(uint16_t idx);
   void setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b);
   void setPixelColor(uint16_t n, uint16_t c);
