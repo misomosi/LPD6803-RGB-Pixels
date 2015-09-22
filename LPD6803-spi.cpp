@@ -23,10 +23,12 @@ enum lpd6803mode {
   START,
   HEADER,
   DATA,
+  ZERO,
   DONE
 };
 
-static lpd6803mode SendMode;   // Used in interrupt 0=start,1=header,2=data,3=data done
+static volatile lpd6803mode SendMode;   // Used in interrupt 0=start,1=header,2=data,3=data done
+static volatile bool IsOn;
 static uint16_t  LedIndex;   // Used in interrupt - Which LED we are sending.
 static byte  BlankCounter;  //Used in interrupt.
 
@@ -55,8 +57,22 @@ void SpiOut(void)
                 val = pixels[LedIndex] >> 8;
             } else {
                 // Send LSB and advance index
-                val = pixels[LedIndex] & 0xFF;
-                if(++LedIndex > numLEDs)
+                val = pixels[LedIndex++] & 0xFF;
+                if(LedIndex >= numLEDs)
+                { // We are done sending data
+                    SendMode = DONE;
+                }
+            }
+            ByteCount++;
+            break;
+        case ZERO: //We are sending 'off' data
+            if (!(ByteCount & 1)) {
+                // Send MSB
+                val = 0x80;
+            } else {
+                // Send LSB and advance index
+                val = 0x00;
+                if(LedIndex++ >= numLEDs)
                 { // We are done sending data
                     SendMode = DONE;
                 }
@@ -66,7 +82,7 @@ void SpiOut(void)
         case HEADER:
             if (ByteCount < 4) { // Hold DATA low for a while
                 if (++ByteCount==4) {
-                    SendMode = DATA;      //If this was the last bit of header then move on to data.
+                    SendMode = (IsOn)? DATA : ZERO;      //If this was the last bit of header then move on to data.
                     LedIndex = 0;
                     ByteCount = 0;
                     val = 0;
@@ -92,7 +108,7 @@ void SpiOut(void)
 LPD6803::LPD6803(uint16_t n) {
   numLEDs = n;
 
-  pixels = (uint16_t *)malloc(numLEDs);
+  pixels = (uint16_t *)malloc(numLEDs * sizeof(uint16_t));
   for (uint16_t i=0; i< numLEDs; i++) {
     setPixelColor(i, 0, 0, 0);
   }
@@ -109,6 +125,7 @@ void LPD6803::begin(void) {
   SPI.setDataMode(0);
   SPI.setClockDivider(SPI_CLOCK_DIV128);
   setCPUmax(cpumax);
+  IsOn = true;
 
   Timer1.attachInterrupt(SpiOut);  // attaches callback() as a timer overflow interrupt
   //SpiOut();
@@ -116,14 +133,13 @@ void LPD6803::begin(void) {
 
 //--
 void LPD6803::end(void) {
-    for (int i = 0; i < numLEDs; i++) {
-        setPixelColor(i, 0);
-    }
-    show();
+    IsOn = false;
     flush();
-    SPI.end();
+    SendMode = START;
+    flush();
     Timer1.detachInterrupt();
     Timer1.stop();
+    SPI.end();
 }
 
 void LPD6803::flush() {
@@ -148,7 +164,9 @@ void LPD6803::setCPUmax(uint8_t m) {
 
 //---
 void LPD6803::show(void) {
-  SendMode = START;
+  flush();
+  if(IsOn)
+    SendMode = START;
 }
 
 //---
@@ -177,4 +195,9 @@ void LPD6803::setPixelColor(uint16_t n, uint16_t c) {
   if (n > numLEDs) return;
 
   pixels[n] = 0x8000 | c;
+}
+
+uint8_t LPD6803::getState()
+{
+    return SendMode;
 }

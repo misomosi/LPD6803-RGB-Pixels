@@ -19,4 +19,6 @@ class LPD6803 {
   void setPixelColor(uint16_t n, uint16_t c);
   void setCPUmax(uint8_t m);
   uint16_t numPixels(void);
+    
+  uint8_t getState();
 };
